@@ -1,0 +1,35 @@
+<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Studio Video Redaksi</title><link rel="stylesheet" href="style.css"><style>
+.studio{max-width:900px;margin:30px auto;padding:20px}.studio-panel{border:1px solid #ddd;padding:18px;margin:16px 0}.studio label{display:block;font-weight:bold;margin:12px 0 5px}.studio input{max-width:100%}.studio video{width:100%;max-height:420px;background:#111}.studio button{padding:10px 16px;background:#c90024;color:#fff;border:0;margin:8px 6px 8px 0;font-weight:bold}.studio input[type=range]{width:100%}.studio small{color:#666}
+</style></head><body><main class="studio"><h1>Studio Video Redaksi</h1><p>Alat bantu pemotongan dan kompresi ringan di browser. Hasilnya diunduh ke perangkat; unggah hasil akhir melalui <a href="admin/">CMS /admin → Video Redaksi</a>.</p>
+<section class="studio-panel"><label>Pilih video dari HP/kamera</label><input id="file" type="file" accept="video/*"><video id="preview" controls playsinline></video>
+<label>Mulai (detik)</label><input id="start" type="number" min="0" value="0" step="0.5">
+<label>Akhir (detik)</label><input id="end" type="number" min="0" value="0" step="0.5">
+<label>Resolusi maksimum</label><select id="width"><option value="1280">720p (lebar 1280)</option><option value="854">480p (lebar 854)</option><option value="640">360p (lebar 640)</option></select>
+<label>Bitrate video</label><select id="rate"><option value="1800000">1,8 Mbps</option><option value="1000000">1 Mbps</option><option value="700000">700 Kbps</option></select>
+<button id="process" disabled>Potong & kompres video</button><a id="download" hidden>Unduh hasil WebM</a><p id="status" role="status">Pilih video untuk memulai.</p><small>Memerlukan browser yang mendukung MediaRecorder dan captureStream. Hasil WebM dapat diunggah ke CMS. Uji pemutaran sebelum diterbitkan.</small></section>
+<section class="studio-panel"><h2>Alur publikasi</h2><ol><li>Unduh hasil kompresi.</li><li>Buka CMS dan pilih Video Redaksi.</li><li>Isi judul, deskripsi, reporter, thumbnail, dan sumber/izin.</li><li>Simpan Draf untuk diperiksa editor; ubah ke Terbit setelah disetujui.</li></ol></section>
+</main><script>
+const file=document.getElementById('file'),v=document.getElementById('preview'),start=document.getElementById('start'),end=document.getElementById('end'),btn=document.getElementById('process'),status=document.getElementById('status'),dl=document.getElementById('download');
+let sourceUrl='';
+file.addEventListener('change',()=>{if(sourceUrl)URL.revokeObjectURL(sourceUrl);if(!file.files[0])return;sourceUrl=URL.createObjectURL(file.files[0]);v.src=sourceUrl;v.onloadedmetadata=()=>{start.max=v.duration;end.max=v.duration;end.value=v.duration;btn.disabled=false;status.textContent='Video siap. Tentukan titik awal dan akhir.';}});
+btn.addEventListener('click',async()=>{try{
+ if(!v.captureStream&&!v.mozCaptureStream)throw Error('Browser tidak mendukung captureStream. Gunakan Chrome Android terbaru atau unggah file asli melalui CMS.');
+ const a=Number(start.value),b=Number(end.value);if(!(b>a&&b<=v.duration))throw Error('Rentang waktu tidak valid.');
+ const streamFn=v.captureStream||v.mozCaptureStream;const stream=streamFn.call(v);
+ const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d'),maxW=Number(document.getElementById('width').value),scale=Math.min(1,maxW/v.videoWidth);
+ canvas.width=Math.round(v.videoWidth*scale/2)*2;canvas.height=Math.round(v.videoHeight*scale/2)*2;
+ const canvasStream=canvas.captureStream(24);stream.getAudioTracks().forEach(t=>canvasStream.addTrack(t));
+ const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));
+ if(!mime)throw Error('Format WebM tidak didukung browser ini.');
+ const rec=new MediaRecorder(canvasStream,{mimeType:mime,videoBitsPerSecond:Number(document.getElementById('rate').value)}),chunks=[];
+ rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
+ const done=new Promise(resolve=>rec.onstop=resolve);
+ v.pause();v.currentTime=a;await new Promise(resolve=>v.onseeked=resolve);
+ rec.start(500);status.textContent='Memproses video… jangan tutup halaman.';
+ await v.play();
+ const draw=()=>{if(!v.paused&&!v.ended){ctx.drawImage(v,0,0,canvas.width,canvas.height);requestAnimationFrame(draw);}};draw();
+ await new Promise(resolve=>{const tick=()=>{if(v.currentTime>=b||v.ended){v.pause();resolve();}else requestAnimationFrame(tick);};tick();});
+ rec.stop();await done;canvasStream.getTracks().forEach(t=>t.stop());
+ const blob=new Blob(chunks,{type:mime}),url=URL.createObjectURL(blob);dl.href=url;dl.download=(file.files[0].name.replace(/\.[^.]+$/,'')+'-edit.webm');dl.hidden=false;dl.textContent='Unduh hasil ('+(blob.size/1024/1024).toFixed(1)+' MB)';status.textContent='Selesai. Periksa hasil, unduh, lalu unggah melalui CMS.';
+ }catch(e){status.textContent='Tidak dapat memproses: '+e.message;}});
+</script></body></html>
